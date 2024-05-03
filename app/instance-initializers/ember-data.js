@@ -15,7 +15,7 @@ export function initialize() {
 
     const lid = `${type}:${id}`;
 
-    console.log('generate lid', lid, data);
+    // console.log('generate lid', lid, data);
 
     return data.lid || lid;
   });
