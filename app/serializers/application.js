@@ -1,7 +1,6 @@
 import RESTSerializer, {
   EmbeddedRecordsMixin,
 } from '@ember-data/serializer/rest';
-const { isArray } = Array;
 
 export default class ApplicationSerializer extends RESTSerializer.extend(
   EmbeddedRecordsMixin,
@@ -26,20 +25,30 @@ export default class ApplicationSerializer extends RESTSerializer.extend(
     return json;
   }
 
-  extractRelationship(relationshipModelName, relationshipHash) {
-    const json = super.extractRelationship(...arguments);
+  _extractEmbeddedHasMany(store, key, hash, relationshipMeta) {
+    const relationshipHash = hash.data?.relationships?.[key]?.data;
+    super._extractEmbeddedHasMany(store, key, hash, relationshipMeta);
 
-    // console.log('extractRelationship', JSON.stringify(json, null, 2));
-
-    return json;
+    if (!relationshipHash) {
+      return;
+    }
+    const newHash = hash.data.relationships[key].data;
+    newHash.forEach((item, index) => {
+      const lid = relationshipHash[index].lid;
+      if (lid) {
+        item.lid = lid;
+      }
+    });
   }
 
-  extractRelationships(modelClass, resourceHash) {
-    const json = super.extractRelationships(...arguments);
+  _extractEmbeddedBelongsTo(store, key, hash, relationshipMeta) {
+    const relationshipHash = hash.data?.relationships?.[key]?.data;
+    super._extractEmbeddedBelongsTo(store, key, hash, relationshipMeta);
 
-    // console.log('extractRelationships', JSON.stringify(json, null, 2));
-
-    return json;
+    if (!relationshipHash?.lid) {
+      return;
+    }
+    hash.data.relationships[key].data.lid = relationshipHash.lid;
   }
 
   normalizeResponse(store, primaryModelClass, payload, id, requestType) {
@@ -50,8 +59,6 @@ export default class ApplicationSerializer extends RESTSerializer.extend(
       id,
       requestType,
     );
-
-    console.log('noramlizeResponse', JSON.stringify(json, null, 2));
 
     return json;
   }

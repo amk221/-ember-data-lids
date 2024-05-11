@@ -2,14 +2,11 @@ import { module, test } from 'qunit';
 import { setupTest } from 'example/tests/helpers';
 import Pretender from 'pretender';
 import { recordIdentifierFor } from '@ember-data/store';
-const { parse, stringify } = JSON;
 
 module('Unit | Model | foo', function (hooks) {
   setupTest(hooks);
 
   test('saving', async function (assert) {
-    let lastPostRequest;
-
     const server = new Pretender();
     const store = this.owner.lookup('service:store');
     const foo1 = store.createRecord('foo', { name: 'foo 1' });
@@ -25,9 +22,7 @@ module('Unit | Model | foo', function (hooks) {
     const { lid: bar2Lid } = recordIdentifierFor(bar2);
     const { lid: baz1Lid } = recordIdentifierFor(baz1);
 
-    server.post('/foos', (request) => {
-      lastPostRequest = parse(request.requestBody);
-
+    server.post('/foos', () => {
       return [
         200,
         {},
@@ -51,27 +46,48 @@ module('Unit | Model | foo', function (hooks) {
     });
 
     // Test that saving does not create duplicate records
-
     assert.strictEqual(foo1.name, 'foo 1');
     assert.strictEqual(foo1.bars[0].name, 'bar 1');
     assert.strictEqual(foo1.bars[1].name, 'bar 2');
     assert.strictEqual(foo1.baz.name, 'baz 1');
+    assert.strictEqual(store.peekAll('foo').length, 1);
     assert.strictEqual(store.peekAll('bar').length, 2);
     assert.strictEqual(store.peekAll('baz').length, 1);
+    assert.true(foo1.isNew, 'foo is new');
+    assert.true(bar1.isNew, 'bar 1 is new');
+    assert.true(bar2.isNew, 'bar 2 is new');
+    assert.true(baz1.isNew, 'baz is new');
 
-    try {
-      await foo1.save();
-    } catch (error) {
-      console.error(error.message);
-    } finally {
-      assert.strictEqual(foo1.name, 'foo 1 (saved)');
-      assert.strictEqual(foo1.bars[0].name, 'bar 1 (saved)');
-      assert.strictEqual(foo1.bars[1].name, 'bar 2 (saved)');
-      assert.strictEqual(foo1.baz.name, 'baz 1 (saved)');
-      assert.strictEqual(store.peekAll('bar').length, 2);
-      assert.strictEqual(store.peekAll('baz').length, 1);
+    await foo1.save();
 
-      console.log(stringify(lastPostRequest, null, 2));
-    }
+    // initially the nested records will be dirty because the server in
+    // our test is mutating the saved values. This is not a problem in
+    // a real-world scenario.
+    assert.strictEqual(foo1.name, 'foo 1 (saved)');
+    assert.strictEqual(foo1.bars[0].name, 'bar 1');
+    assert.strictEqual(foo1.bars[1].name, 'bar 2');
+    assert.strictEqual(foo1.baz.name, 'baz 1');
+    assert.false(foo1.hasDirtyAttributes, 'foo is not dirty');
+    assert.true(bar1.hasDirtyAttributes, 'bar 1 is dirty');
+    assert.true(bar2.hasDirtyAttributes, 'bar 2 is dirty');
+    assert.true(baz1.hasDirtyAttributes, 'baz is dirty');
+    assert.false(foo1.isNew, 'foo is not new');
+    assert.false(bar1.isNew, 'bar 1 is not new');
+    assert.false(bar2.isNew, 'bar 2 is not new');
+    assert.false(baz1.isNew, 'baz is not new');
+
+    // but if we rollback these records we will see the clean state the server
+    // gave us
+    bar1.rollbackAttributes();
+    bar2.rollbackAttributes();
+    baz1.rollbackAttributes();
+
+    assert.strictEqual(foo1.name, 'foo 1 (saved)');
+    assert.strictEqual(foo1.bars[0].name, 'bar 1 (saved)');
+    assert.strictEqual(foo1.bars[1].name, 'bar 2 (saved)');
+    assert.strictEqual(foo1.baz.name, 'baz 1 (saved)');
+    assert.strictEqual(store.peekAll('foo').length, 1, 'we still have 1 foo');
+    assert.strictEqual(store.peekAll('bar').length, 2, 'we still have 2 bars');
+    assert.strictEqual(store.peekAll('baz').length, 1, 'we still have 1 baz');
   });
 });
